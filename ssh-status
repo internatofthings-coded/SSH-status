@@ -1,0 +1,41 @@
+#!/bin/bash
+
+declare -A users
+declare -a rows
+sessions=0
+
+if ! ids=$(loginctl list-sessions --no-legend --no-pager); then
+    echo "Unable to retrieve login sessions."
+    exit 1
+fi
+
+while read -r id rest; do
+    [ -z "$id" ] && continue
+
+    info=$(loginctl show-session "$id" \
+        -p Name -p Remote -p Service -p RemoteHost 2>/dev/null) || continue
+
+    name=$(echo "$info" | sed -n 's/^Name=//p')
+    remote=$(echo "$info" | sed -n 's/^Remote=//p')
+    service=$(echo "$info" | sed -n 's/^Service=//p')
+    host=$(echo "$info" | sed -n 's/^RemoteHost=//p')
+
+    if [[ "$remote" == "yes" && "$service" == "sshd" && -n "$name" ]]; then
+        users["$name"]=1
+        ((sessions+=1))
+        rows+=("$(printf '%-14s %-10s %s' "$name" "$id" "${host:-unknown}")")
+    fi
+done <<< "$ids"
+
+echo "========== SSH STATUS =========="
+printf "Hostname       : %s\n" "$(hostname)"
+printf "Unique users   : %s\n" "${#users[@]}"
+printf "SSH sessions   : %s\n" "$sessions"
+echo
+printf '%-14s %-10s %s\n' "USER" "SESSION" "CONNECTED FROM"
+
+for row in "${rows[@]}"; do
+    printf '%s\n' "$row"
+done
+
+echo "================================"
